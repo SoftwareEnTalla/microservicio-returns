@@ -100,6 +100,18 @@ export class ReturnsCommandService implements OnModuleInit {
     return entityData?.[field] ?? currentData?.[field] ?? inputData?.[field];
   }
 
+  private normalizeLifecycleValue(value: any): string {
+    return String(value ?? '').trim().toUpperCase();
+  }
+
+  private isRefundRequestedStatus(value: string): boolean {
+    return ['REQUESTED', 'PENDING', 'IN_PROGRESS', 'APPROVAL_PENDING'].includes(value);
+  }
+
+  private isRestockedState(status: string, restockDecision: string): boolean {
+    return ['RESTOCKED', 'RESTOCK_COMPLETED'].includes(status) || ['RESTOCK', 'RESTOCKED', 'RETURN_TO_STOCK'].includes(restockDecision);
+  }
+
   private async publishDslDomainEvents(events: BaseEvent[]): Promise<void> {
     for (const event of events) {
       await this.eventPublisher.publish(event as any);
@@ -119,7 +131,47 @@ export class ReturnsCommandService implements OnModuleInit {
     const entityData = ((entity ?? {}) as Record<string, any>);
     const currentData = ((current ?? {}) as Record<string, any>);
     const pendingEvents: BaseEvent[] = [];
-// No se definieron business-rules target=service.
+
+    if (operation !== 'delete') {
+      const aggregateId = String(entityData['id'] ?? currentData['id'] ?? inputData?.id ?? 'returns-update');
+      const initiatedBy = String(entityData['createdBy'] ?? currentData['createdBy'] ?? inputData?.createdBy ?? 'system');
+      const correlationId = String(inputData?.correlationId ?? inputData?.metadata?.correlationId ?? aggregateId);
+      const snapshot = ((entity ?? current ?? inputData ?? {}) as any);
+
+      const nextStatus = this.normalizeLifecycleValue(this.dslValue(entityData, currentData, inputData, 'status'));
+      const previousStatus = this.normalizeLifecycleValue(currentData?.status);
+      const nextRefundStatus = this.normalizeLifecycleValue(this.dslValue(entityData, currentData, inputData, 'refundStatus'));
+      const previousRefundStatus = this.normalizeLifecycleValue(currentData?.refundStatus);
+      const nextRestockDecision = this.normalizeLifecycleValue(this.dslValue(entityData, currentData, inputData, 'restockDecision'));
+      const previousRestockDecision = this.normalizeLifecycleValue(currentData?.restockDecision);
+
+      if (nextStatus === 'REQUESTED' && nextStatus !== previousStatus) {
+        pendingEvents.push(ReturnRequestedEvent.create(aggregateId, snapshot, initiatedBy, correlationId));
+      }
+
+      if (nextStatus === 'APPROVED' && nextStatus !== previousStatus) {
+        pendingEvents.push(ReturnApprovedEvent.create(aggregateId, snapshot, initiatedBy, correlationId));
+      }
+
+      if (nextStatus === 'REJECTED' && nextStatus !== previousStatus) {
+        pendingEvents.push(ReturnRejectedEvent.create(aggregateId, snapshot, initiatedBy, correlationId));
+      }
+
+      if (
+        this.isRestockedState(nextStatus, nextRestockDecision) &&
+        (nextStatus !== previousStatus || nextRestockDecision !== previousRestockDecision || operation === 'create')
+      ) {
+        pendingEvents.push(ReturnRestockedEvent.create(aggregateId, snapshot, initiatedBy, correlationId));
+      }
+
+      if (
+        this.isRefundRequestedStatus(nextRefundStatus) &&
+        (nextRefundStatus !== previousRefundStatus || operation === 'create')
+      ) {
+        pendingEvents.push(RefundRequestedEvent.create(aggregateId, snapshot, initiatedBy, correlationId));
+      }
+    }
+
     if (publishEvents) {
       await this.publishDslDomainEvents(pendingEvents);
     }
