@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PORT=${PORT:-3008}
+PORT=${PORT:-3020}
 BASE_URL="http://localhost:${PORT}/api/returns"
 wait_for(){ until curl -sSf ${BASE_URL} >/dev/null 2>&1; do printf "."; sleep 1; done }
 echo "Waiting for returns-service on ${BASE_URL}..."
