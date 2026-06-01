@@ -5,24 +5,53 @@ import { validateOrReject } from "class-validator";
 // Sobrecarga de la función
 export function generateCacheKey<Type>(
   prefijo: string,
-  id: string,
-  partialEntity: Partial<Type>
+  idOrPayload: string | number | Partial<Type> | Partial<Type>[]
 ): string;
-export function generateCacheKey<Type>(prefijo: string, id: string): string;
+export function generateCacheKey<Type>(
+  prefijo: string,
+  idOrPayload: string | number | Partial<Type> | Partial<Type>[],
+  partialEntity: Partial<Type> | Partial<Type>[]
+): string;
 
 // Implementación de la función
 export function generateCacheKey<Type>(
   prefijo: string,
-  id: string,
-  partialEntity?: Partial<Type>
+  idOrPayload: string | number | Partial<Type> | Partial<Type>[],
+  partialEntity?: Partial<Type> | Partial<Type>[]
 ): string {
-  if (partialEntity) {
-    const hash = createHash("sha256")
-      .update(JSON.stringify(partialEntity))
-      .digest("hex");
-    return `${prefijo}:${id}:${hash}`;
+  const stableSerialize = (value: unknown): string => {
+    if (value === null || value === undefined) {
+      return String(value);
+    }
+
+    if (Array.isArray(value)) {
+      return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+    }
+
+    if (typeof value === "object") {
+      const entries = Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nestedValue]) => `${JSON.stringify(key)}:${stableSerialize(nestedValue)}`);
+      return `{${entries.join(",")}}`;
+    }
+
+    return JSON.stringify(value);
+  };
+
+  const hashCacheSegment = (value: unknown): string => {
+    return createHash("sha256").update(stableSerialize(value)).digest("hex");
+  };
+
+  const keyBase =
+    typeof idOrPayload === "string" || typeof idOrPayload === "number"
+      ? String(idOrPayload)
+      : hashCacheSegment(idOrPayload);
+
+  if (partialEntity !== undefined) {
+    return `${prefijo}:${keyBase}:${hashCacheSegment(partialEntity)}`;
   }
-  return `${prefijo}:${id}`;
+
+  return `${prefijo}:${keyBase}`;
 }
 
 // Sobrecarga 1: Cuando se pasa la clase explícitamente

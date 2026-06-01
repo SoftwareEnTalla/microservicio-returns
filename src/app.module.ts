@@ -50,6 +50,7 @@ import { ModuleRef } from "@nestjs/core";
 import { ServiceRegistry } from "@core/service-registry";
 import LoggerService, { logger } from "@core/logs/logger";
 import { HorizontalModule } from "@common/horizontal";
+import { ReturnsLifecycleModule } from "./modules/returns-lifecycle/returns-lifecycle.module";
 
 
 /*
@@ -115,6 +116,7 @@ import LoggerService, { logger } from "@core/logs/logger";
     CqrsModule,
     HorizontalModule,
     ReturnsModule,
+    ReturnsLifecycleModule,
     CatalogClientModule,
         
     /**
